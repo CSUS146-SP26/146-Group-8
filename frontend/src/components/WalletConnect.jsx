@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 
-export default function WalletConnect() {
+export default function WalletConnect({ onAccountChange }) {
   const [account, setAccount] = useState(null);
   const [balance, setBalance] = useState(null);
   const [error, setError] = useState(null);
 
-  // Auto-reconnect if wallet was previously connected
   useEffect(() => {
     const saved = localStorage.getItem("connectedAccount");
     if (saved) reconnect(saved);
@@ -23,6 +22,7 @@ export default function WalletConnect() {
         const bal = await provider.getBalance(match.address);
         setAccount(match.address);
         setBalance(ethers.formatEther(bal));
+        if (onAccountChange) onAccountChange(match.address);
       }
     } catch {}
   }
@@ -41,6 +41,7 @@ export default function WalletConnect() {
       setAccount(address);
       setBalance(ethers.formatEther(bal));
       localStorage.setItem("connectedAccount", address);
+      if (onAccountChange) onAccountChange(address);
     } catch (err) {
       setError("Connection rejected.");
     }
@@ -50,6 +51,7 @@ export default function WalletConnect() {
     setAccount(null);
     setBalance(null);
     localStorage.removeItem("connectedAccount");
+    if (onAccountChange) onAccountChange(null);
   }
 
   function shortAddress(addr) {
@@ -102,7 +104,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "12px",
-    background: "#f1f5f9",
+    background: "rgba(255,255,255,0.1)",
     borderRadius: "8px",
     padding: "8px 14px",
   },
@@ -121,23 +123,23 @@ const styles = {
   address: {
     fontSize: "14px",
     fontWeight: "500",
-    color: "#1e3a5f",
+    color: "#fff",
   },
   balance: {
     fontSize: "13px",
-    color: "#555",
+    color: "#93c5fd",
   },
   disconnectBtn: {
     background: "transparent",
-    border: "1px solid #ccc",
+    border: "1px solid rgba(255,255,255,0.3)",
     borderRadius: "6px",
     padding: "4px 10px",
     fontSize: "12px",
     cursor: "pointer",
-    color: "#555",
+    color: "#fff",
   },
   error: {
-    color: "#dc2626",
+    color: "#fca5a5",
     fontSize: "12px",
     margin: 0,
   },
