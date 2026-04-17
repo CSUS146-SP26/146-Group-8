@@ -1,58 +1,55 @@
 import { useState } from "react";
-import { VIDEOS, shortAddress } from "../data/videos";
+import { ethers } from "ethers";
+import { shortAddress } from "../data/videos";
 
-const MY_VIDEOS = VIDEOS.slice(0, 2).map((v) => ({
-  ...v,
-  earnings: (Math.random() * 0.1).toFixed(4),
-  views: Math.floor(Math.random() * 200 + 10),
-}));
-
-export default function DashboardPage({ account }) {
-  const [uploading, setUploading] = useState(false);
+export default function DashboardPage({ contractHook, onUploadSuccess }) {
+  const { account, uploadVideo, withdrawEarnings, earnings, loading, error } = contractHook;
+  const [form, setForm] = useState({ title: "", price: "", cid: "" });
   const [uploaded, setUploaded] = useState(false);
-  const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawn, setWithdrawn] = useState(false);
-  const [form, setForm] = useState({ title: "", price: "", file: null });
+  const [localError, setLocalError] = useState(null);
 
-  const totalEarnings = MY_VIDEOS.reduce((sum, v) => sum + parseFloat(v.earnings), 0).toFixed(4);
-
-  function handleUpload(e) {
+  async function handleUpload(e) {
     e.preventDefault();
-    if (!account) return;
-    setUploading(true);
-    setTimeout(() => { setUploading(false); setUploaded(true); setTimeout(() => setUploaded(false), 3000); }, 2500);
+    setLocalError(null);
+    if (!account) { setLocalError("Connect your wallet first."); return; }
+    if (!form.title || !form.price || !form.cid) { setLocalError("Please fill in all fields."); return; }
+    const receipt = await uploadVideo(form.cid, form.title, form.price);
+    if (receipt) {
+      setUploaded(true);
+      setForm({ title: "", price: "", cid: "" });
+      if (onUploadSuccess) onUploadSuccess();
+      setTimeout(() => setUploaded(false), 3000);
+    }
   }
 
-  function handleWithdraw() {
-    setWithdrawing(true);
-    setTimeout(() => { setWithdrawing(false); setWithdrawn(true); setTimeout(() => setWithdrawn(false), 3000); }, 1800);
+  async function handleWithdraw() {
+    const receipt = await withdrawEarnings();
+    if (receipt) { setWithdrawn(true); setTimeout(() => setWithdrawn(false), 3000); }
   }
+
+  const displayError = localError || error;
 
   return (
     <div style={styles.page}>
       <div style={styles.header}>
-        <div>
-          <h1 style={styles.pageTitle}>Creator Dashboard</h1>
-          <p style={styles.pageSub}>
-            {account ? shortAddress(account) : "Connect wallet to manage your content"}
-          </p>
-        </div>
+        <h1 style={styles.pageTitle}>Creator Dashboard</h1>
+        <p style={styles.pageSub}>
+          {account ? shortAddress(account) : "Connect wallet to manage your content"}
+        </p>
       </div>
 
       {/* Stats */}
       <div style={styles.statsGrid}>
         {[
-          { label: "Total videos", value: MY_VIDEOS.length, icon: "▶", color: "#6366f1" },
-          { label: "Total earnings", value: `${totalEarnings} ETH`, icon: "◈", color: "#10b981" },
-          { label: "Total views", value: MY_VIDEOS.reduce((s, v) => s + v.views, 0), icon: "◉", color: "#f59e0b" },
-          { label: "Pending payout", value: `${totalEarnings} ETH`, icon: "⬡", color: "#818cf8" },
-        ].map(({ label, value, icon, color }) => (
+          { label: "Pending earnings", value: `${parseFloat(earnings).toFixed(4)} ETH`, color: "#10b981" },
+          { label: "Network", value: "Localhost:8545", color: "#6366f1" },
+          { label: "Contract", value: "Deployed ✓", color: "#818cf8" },
+          { label: "Status", value: account ? "Connected" : "Disconnected", color: account ? "#10b981" : "#ef4444" },
+        ].map(({ label, value, color }) => (
           <div key={label} style={styles.statCard}>
-            <div style={{ ...styles.statIcon, color }}>{icon}</div>
-            <div>
-              <p style={styles.statLabel}>{label}</p>
-              <p style={{ ...styles.statValue, color }}>{value}</p>
-            </div>
+            <p style={styles.statLabel}>{label}</p>
+            <p style={{ ...styles.statValue, color }}>{value}</p>
           </div>
         ))}
       </div>
@@ -62,7 +59,7 @@ export default function DashboardPage({ account }) {
         <div style={styles.card}>
           <div style={styles.cardHeader}>
             <h2 style={styles.cardTitle}>Upload video</h2>
-            <span style={styles.cardSub}>IPFS + on-chain registration</span>
+            <span style={styles.cardSub}>Register on-chain via smart contract</span>
           </div>
 
           <form onSubmit={handleUpload} style={styles.form}>
@@ -74,8 +71,19 @@ export default function DashboardPage({ account }) {
                 placeholder="Enter a title..."
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                required
               />
+            </div>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>IPFS CID</label>
+              <input
+                style={styles.input}
+                type="text"
+                placeholder="QmXoypizjW3WknFiJnKLwHCnL72..."
+                value={form.cid}
+                onChange={(e) => setForm({ ...form, cid: e.target.value })}
+              />
+              <span style={styles.fieldHint}>Paste the IPFS CID of your uploaded video</span>
             </div>
 
             <div style={styles.fieldGroup}>
@@ -88,71 +96,47 @@ export default function DashboardPage({ account }) {
                 placeholder="0.01"
                 value={form.price}
                 onChange={(e) => setForm({ ...form, price: e.target.value })}
-                required
               />
-            </div>
-
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Video file</label>
-              <div style={styles.fileUpload}
-                onClick={() => document.getElementById("fileInput").click()}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4a4963" strokeWidth="1.5">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-                <p style={styles.fileText}>
-                  {form.file ? form.file.name : "Click to select video"}
-                </p>
-                <p style={styles.fileSubtext}>Will be uploaded to IPFS</p>
-                <input
-                  id="fileInput" type="file" accept="video/*"
-                  style={{ display: "none" }}
-                  onChange={(e) => setForm({ ...form, file: e.target.files[0] })}
-                />
-              </div>
             </div>
 
             <button
               type="submit"
-              style={{ ...styles.submitBtn, ...((!account || uploading) ? { opacity: 0.5 } : {}) }}
-              disabled={!account || uploading}
+              style={{ ...styles.submitBtn, ...((!account || loading) ? { opacity: 0.5 } : {}) }}
+              disabled={!account || loading}
             >
-              {uploading ? "Uploading to IPFS..." : "Upload & Register on Chain"}
+              {loading ? "Registering on-chain..." : "Upload & Register on Chain"}
             </button>
 
-            {!account && (
-              <p style={styles.walletWarning}>Connect your wallet to upload</p>
-            )}
+            {!account && <p style={styles.walletWarning}>Connect your wallet to upload</p>}
+            {displayError && <p style={styles.errorMsg}>{displayError}</p>}
             {uploaded && (
               <div style={styles.successMsg}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5">
                   <path d="M20 6L9 17l-5-5"/>
                 </svg>
-                Video uploaded and registered on-chain!
+                Video registered on-chain!
               </div>
             )}
           </form>
         </div>
 
-        {/* My videos + withdraw */}
-        <div style={styles.rightCol}>
+        {/* Earnings */}
+        <div>
           <div style={styles.card}>
             <div style={styles.cardHeader}>
               <h2 style={styles.cardTitle}>Earnings</h2>
-              <span style={styles.cardSub}>Accumulated ETH</span>
+              <span style={styles.cardSub}>Accumulated on-chain</span>
             </div>
             <div style={styles.earningsDisplay}>
-              <span style={styles.earningsValue}>{totalEarnings}</span>
+              <span style={styles.earningsValue}>{parseFloat(earnings).toFixed(4)}</span>
               <span style={styles.earningsEth}>ETH</span>
             </div>
             <button
-              style={{ ...styles.withdrawBtn, ...(withdrawing ? { opacity: 0.6 } : {}) }}
+              style={{ ...styles.withdrawBtn, ...(loading || parseFloat(earnings) === 0 ? { opacity: 0.5 } : {}) }}
               onClick={handleWithdraw}
-              disabled={withdrawing}
+              disabled={loading || parseFloat(earnings) === 0}
             >
-              {withdrawing ? "Processing..." : "Withdraw to wallet"}
+              {loading ? "Processing..." : "Withdraw to wallet"}
             </button>
             {withdrawn && (
               <div style={styles.successMsg}>
@@ -164,20 +148,20 @@ export default function DashboardPage({ account }) {
             )}
           </div>
 
-          <div style={styles.card}>
+          <div style={{ ...styles.card, marginTop: "16px" }}>
             <div style={styles.cardHeader}>
-              <h2 style={styles.cardTitle}>My videos</h2>
+              <h2 style={styles.cardTitle}>How it works</h2>
             </div>
-            {MY_VIDEOS.map((video) => (
-              <div key={video.id} style={styles.videoRow}>
-                <img src={video.thumbnail} alt={video.title} style={styles.videoThumb} />
-                <div style={styles.videoRowInfo}>
-                  <p style={styles.videoRowTitle}>{video.title}</p>
-                  <div style={styles.videoRowMeta}>
-                    <span style={styles.videoRowStat}>{video.views} views</span>
-                    <span style={styles.videoRowEarnings}>{video.earnings} ETH</span>
-                  </div>
-                </div>
+            {[
+              { step: "1", text: "Paste your IPFS CID and set a price" },
+              { step: "2", text: "Contract computes keccak256(CID + address)" },
+              { step: "3", text: "Video registered on-chain — immutable" },
+              { step: "4", text: "Viewers pay ETH to unlock your content" },
+              { step: "5", text: "Withdraw earnings anytime to your wallet" },
+            ].map(({ step, text }) => (
+              <div key={step} style={styles.stepRow}>
+                <div style={styles.stepNum}>{step}</div>
+                <p style={styles.stepText}>{text}</p>
               </div>
             ))}
           </div>
@@ -193,67 +177,28 @@ const styles = {
   pageTitle: { fontSize: "28px", fontWeight: "700", color: "#f1f0ff", letterSpacing: "-0.5px", marginBottom: "4px" },
   pageSub: { fontSize: "14px", color: "#4a4963", fontFamily: "'JetBrains Mono', monospace" },
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "28px" },
-  statCard: {
-    background: "#16161f", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "12px",
-    padding: "18px 20px", display: "flex", alignItems: "center", gap: "14px",
-  },
-  statIcon: { fontSize: "22px", lineHeight: 1 },
-  statLabel: { fontSize: "12px", color: "#4a4963", marginBottom: "4px" },
-  statValue: { fontSize: "18px", fontWeight: "700", letterSpacing: "-0.3px" },
+  statCard: { background: "#16161f", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "12px", padding: "18px 20px" },
+  statLabel: { fontSize: "12px", color: "#4a4963", marginBottom: "6px" },
+  statValue: { fontSize: "16px", fontWeight: "700", letterSpacing: "-0.3px" },
   twoCol: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", alignItems: "start" },
-  card: {
-    background: "#16161f", border: "1px solid rgba(255,255,255,0.07)",
-    borderRadius: "14px", padding: "24px", marginBottom: "16px",
-  },
+  card: { background: "#16161f", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "14px", padding: "24px" },
   cardHeader: { marginBottom: "20px" },
   cardTitle: { fontSize: "15px", fontWeight: "600", color: "#f1f0ff", marginBottom: "2px" },
   cardSub: { fontSize: "12px", color: "#4a4963" },
   form: { display: "flex", flexDirection: "column", gap: "16px" },
   fieldGroup: { display: "flex", flexDirection: "column", gap: "6px" },
   label: { fontSize: "12px", fontWeight: "500", color: "#8b8aa3", letterSpacing: "0.03em" },
-  input: {
-    background: "#0d0d14", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px",
-    color: "#f1f0ff", fontFamily: "'Space Grotesk', sans-serif", fontSize: "14px",
-    padding: "10px 14px", outline: "none", transition: "border-color 0.2s",
-  },
-  fileUpload: {
-    background: "#0d0d14", border: "1px dashed rgba(255,255,255,0.1)", borderRadius: "10px",
-    padding: "24px", display: "flex", flexDirection: "column", alignItems: "center",
-    gap: "6px", cursor: "pointer", transition: "border-color 0.2s",
-  },
-  fileText: { fontSize: "13px", color: "#8b8aa3", fontWeight: "500" },
-  fileSubtext: { fontSize: "11px", color: "#4a4963" },
-  submitBtn: {
-    background: "#6366f1", color: "#fff", border: "none", borderRadius: "10px",
-    padding: "12px", fontSize: "14px", fontWeight: "600", cursor: "pointer",
-    fontFamily: "'Space Grotesk', sans-serif", transition: "all 0.2s",
-  },
+  input: { background: "#0d0d14", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", color: "#f1f0ff", fontFamily: "'Space Grotesk', sans-serif", fontSize: "14px", padding: "10px 14px", outline: "none" },
+  fieldHint: { fontSize: "11px", color: "#4a4963" },
+  submitBtn: { background: "#6366f1", color: "#fff", border: "none", borderRadius: "10px", padding: "12px", fontSize: "14px", fontWeight: "600", cursor: "pointer", fontFamily: "'Space Grotesk', sans-serif", transition: "all 0.2s" },
   walletWarning: { fontSize: "12px", color: "#f59e0b", textAlign: "center" },
-  successMsg: {
-    display: "flex", alignItems: "center", gap: "6px", justifyContent: "center",
-    color: "#10b981", fontSize: "13px",
-  },
-  rightCol: {},
+  errorMsg: { fontSize: "12px", color: "#f87171", textAlign: "center" },
+  successMsg: { display: "flex", alignItems: "center", gap: "6px", justifyContent: "center", color: "#10b981", fontSize: "13px" },
   earningsDisplay: { display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "16px" },
   earningsValue: { fontSize: "36px", fontWeight: "700", color: "#10b981", letterSpacing: "-1px" },
   earningsEth: { fontSize: "16px", color: "#4a4963", fontWeight: "600" },
-  withdrawBtn: {
-    width: "100%", background: "rgba(16,185,129,0.15)", color: "#10b981",
-    border: "1px solid rgba(16,185,129,0.3)", borderRadius: "10px", padding: "11px",
-    fontSize: "14px", fontWeight: "600", cursor: "pointer",
-    fontFamily: "'Space Grotesk', sans-serif", transition: "all 0.2s",
-  },
-  videoRow: {
-    display: "flex", gap: "12px", alignItems: "center",
-    padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.04)",
-  },
-  videoThumb: { width: "64px", height: "40px", objectFit: "cover", borderRadius: "6px", flexShrink: 0 },
-  videoRowInfo: { flex: 1, minWidth: 0 },
-  videoRowTitle: {
-    fontSize: "13px", fontWeight: "500", color: "#f1f0ff", marginBottom: "4px",
-    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-  },
-  videoRowMeta: { display: "flex", gap: "10px" },
-  videoRowStat: { fontSize: "11px", color: "#4a4963" },
-  videoRowEarnings: { fontSize: "11px", color: "#10b981", fontFamily: "'JetBrains Mono', monospace" },
+  withdrawBtn: { width: "100%", background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)", borderRadius: "10px", padding: "11px", fontSize: "14px", fontWeight: "600", cursor: "pointer", fontFamily: "'Space Grotesk', sans-serif", transition: "all 0.2s" },
+  stepRow: { display: "flex", alignItems: "flex-start", gap: "12px", padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" },
+  stepNum: { width: "22px", height: "22px", borderRadius: "50%", background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: "700", color: "#818cf8", flexShrink: 0 },
+  stepText: { fontSize: "13px", color: "#8b8aa3", lineHeight: "1.5", paddingTop: "2px" },
 };

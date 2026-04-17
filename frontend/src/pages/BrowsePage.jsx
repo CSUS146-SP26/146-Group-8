@@ -4,11 +4,14 @@ import VideoCard from "../components/VideoCard";
 
 const FILTERS = ["All", "0–0.01 ETH", "0.01–0.02 ETH", "0.02+ ETH"];
 
-export default function BrowsePage({ onSelectVideo }) {
+export default function BrowsePage({ onSelectVideo, chainVideos = [] }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
 
-  const filtered = VIDEOS.filter((v) => {
+  // Use on-chain videos if available, else fall back to mock data
+  const source = chainVideos.length > 0 ? chainVideos : VIDEOS;
+
+  const filtered = source.filter((v) => {
     const matchSearch = v.title.toLowerCase().includes(search.toLowerCase());
     const price = parseFloat(v.price);
     const matchFilter =
@@ -21,13 +24,12 @@ export default function BrowsePage({ onSelectVideo }) {
 
   return (
     <div style={styles.page}>
-      {/* Hero */}
       <div style={styles.hero}>
         <div style={styles.heroGlow} />
         <div style={styles.heroContent}>
           <div style={styles.heroBadge}>
             <span style={styles.heroBadgeDot} />
-            Powered by Ethereum
+            {chainVideos.length > 0 ? "Live on Ethereum" : "Powered by Ethereum"}
           </div>
           <h1 style={styles.heroTitle}>
             Own your content.<br />
@@ -39,7 +41,6 @@ export default function BrowsePage({ onSelectVideo }) {
         </div>
       </div>
 
-      {/* Controls */}
       <div style={styles.controls}>
         <div style={styles.searchWrap}>
           <svg style={styles.searchIcon} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8b8aa3" strokeWidth="2">
@@ -66,24 +67,17 @@ export default function BrowsePage({ onSelectVideo }) {
         </div>
       </div>
 
-      {/* Stats bar */}
       <div style={styles.statsBar}>
         <span style={styles.statsText}>
           {filtered.length} video{filtered.length !== 1 ? "s" : ""} available
+          {chainVideos.length > 0 && <span style={styles.liveTag}> · live on-chain</span>}
         </span>
         <div style={styles.statsRight}>
-          <span style={styles.statItem}>
-            <span style={styles.statDot} />
-            Live on Ethereum
-          </span>
-          <span style={styles.statItem}>
-            <span style={{ ...styles.statDot, background: "#10b981" }} />
-            IPFS Storage
-          </span>
+          <span style={styles.statItem}><span style={styles.statDot} />Live on Ethereum</span>
+          <span style={styles.statItem}><span style={{ ...styles.statDot, background: "#10b981" }} />IPFS Storage</span>
         </div>
       </div>
 
-      {/* Grid */}
       {filtered.length === 0 ? (
         <div style={styles.empty}>
           <div style={styles.emptyIcon}>🔍</div>
@@ -92,10 +86,8 @@ export default function BrowsePage({ onSelectVideo }) {
         </div>
       ) : (
         <div style={styles.grid}>
-          {filtered.map((video, i) => (
-            <div key={video.id} style={{ animationDelay: `${i * 0.05}s` }} className="fade-up">
-              <VideoCard video={video} onClick={onSelectVideo} />
-            </div>
+          {filtered.map((video) => (
+            <VideoCard key={video.id} video={video} onClick={onSelectVideo} />
           ))}
         </div>
       )}
@@ -105,70 +97,28 @@ export default function BrowsePage({ onSelectVideo }) {
 
 const styles = {
   page: { minHeight: "100vh", background: "#0a0a0f" },
-  hero: {
-    position: "relative", padding: "60px 32px 48px", overflow: "hidden",
-    borderBottom: "1px solid rgba(255,255,255,0.05)",
-  },
-  heroGlow: {
-    position: "absolute", top: "-60px", left: "50%", transform: "translateX(-50%)",
-    width: "600px", height: "300px",
-    background: "radial-gradient(ellipse, rgba(99,102,241,0.12) 0%, transparent 70%)",
-    pointerEvents: "none",
-  },
+  hero: { position: "relative", padding: "60px 32px 48px", overflow: "hidden", borderBottom: "1px solid rgba(255,255,255,0.05)" },
+  heroGlow: { position: "absolute", top: "-60px", left: "50%", transform: "translateX(-50%)", width: "600px", height: "300px", background: "radial-gradient(ellipse, rgba(99,102,241,0.12) 0%, transparent 70%)", pointerEvents: "none" },
   heroContent: { position: "relative", maxWidth: "600px" },
-  heroBadge: {
-    display: "inline-flex", alignItems: "center", gap: "6px",
-    background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)",
-    borderRadius: "999px", padding: "4px 12px", fontSize: "12px",
-    color: "#818cf8", fontWeight: "500", marginBottom: "20px",
-  },
-  heroBadgeDot: {
-    width: "6px", height: "6px", borderRadius: "50%",
-    background: "#6366f1", animation: "pulse 2s infinite",
-  },
-  heroTitle: {
-    fontSize: "42px", fontWeight: "700", color: "#f1f0ff",
-    lineHeight: "1.15", letterSpacing: "-1px", marginBottom: "14px",
-  },
-  heroAccent: {
-    background: "linear-gradient(135deg, #6366f1, #a78bfa)",
-    WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-  },
+  heroBadge: { display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: "999px", padding: "4px 12px", fontSize: "12px", color: "#818cf8", fontWeight: "500", marginBottom: "20px" },
+  heroBadgeDot: { width: "6px", height: "6px", borderRadius: "50%", background: "#6366f1" },
+  heroTitle: { fontSize: "42px", fontWeight: "700", color: "#f1f0ff", lineHeight: "1.15", letterSpacing: "-1px", marginBottom: "14px" },
+  heroAccent: { background: "linear-gradient(135deg, #6366f1, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" },
   heroSub: { fontSize: "16px", color: "#8b8aa3", lineHeight: "1.6", maxWidth: "460px" },
-  controls: {
-    padding: "20px 32px", display: "flex", alignItems: "center",
-    gap: "16px", flexWrap: "wrap", borderBottom: "1px solid rgba(255,255,255,0.04)",
-  },
+  controls: { padding: "20px 32px", display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap", borderBottom: "1px solid rgba(255,255,255,0.04)" },
   searchWrap: { position: "relative", flex: "1", minWidth: "240px", maxWidth: "400px" },
   searchIcon: { position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)" },
-  search: {
-    width: "100%", background: "#16161f", border: "1px solid rgba(255,255,255,0.07)",
-    borderRadius: "10px", color: "#f1f0ff", fontFamily: "'Space Grotesk', sans-serif",
-    fontSize: "14px", padding: "10px 14px 10px 36px", outline: "none", transition: "all 0.2s",
-  },
+  search: { width: "100%", background: "#16161f", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", color: "#f1f0ff", fontFamily: "'Space Grotesk', sans-serif", fontSize: "14px", padding: "10px 14px 10px 36px", outline: "none" },
   filters: { display: "flex", gap: "6px", flexWrap: "wrap" },
-  filterBtn: {
-    background: "transparent", border: "1px solid rgba(255,255,255,0.07)",
-    borderRadius: "8px", padding: "7px 14px", fontSize: "12px", fontWeight: "500",
-    color: "#8b8aa3", cursor: "pointer", fontFamily: "'Space Grotesk', sans-serif",
-    transition: "all 0.2s",
-  },
-  filterActive: {
-    background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.35)",
-    color: "#818cf8",
-  },
-  statsBar: {
-    padding: "12px 32px", display: "flex", alignItems: "center",
-    justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.04)",
-  },
+  filterBtn: { background: "transparent", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: "7px 14px", fontSize: "12px", fontWeight: "500", color: "#8b8aa3", cursor: "pointer", fontFamily: "'Space Grotesk', sans-serif", transition: "all 0.2s" },
+  filterActive: { background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.35)", color: "#818cf8" },
+  statsBar: { padding: "12px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.04)" },
   statsText: { fontSize: "13px", color: "#4a4963" },
+  liveTag: { color: "#10b981" },
   statsRight: { display: "flex", gap: "20px" },
   statItem: { display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#4a4963" },
   statDot: { width: "6px", height: "6px", borderRadius: "50%", background: "#6366f1" },
-  grid: {
-    display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-    gap: "20px", padding: "24px 32px",
-  },
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "20px", padding: "24px 32px" },
   empty: { display: "flex", flexDirection: "column", alignItems: "center", padding: "80px 32px" },
   emptyIcon: { fontSize: "40px", marginBottom: "16px" },
   emptyText: { fontSize: "18px", fontWeight: "600", color: "#f1f0ff", marginBottom: "6px" },
