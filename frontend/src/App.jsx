@@ -13,11 +13,27 @@ export default function App() {
   const contractHook = useContract();
   const { account, connectWallet, fetchVideos } = contractHook;
 
-  useEffect(() => { loadVideos(); }, [account]);
+  useEffect(() => {
+    loadVideos();
+  }, [account]);
 
   async function loadVideos() {
-    const videos = await fetchVideos();
-    if (videos.length > 0) setChainVideos(videos);
+    try {
+      const videos = await fetchVideos();
+      setChainVideos(videos || []);
+    } catch (error) {
+      console.error("Failed to load blockchain videos:", error);
+      setChainVideos([]);
+    }
+  }
+
+  function handleNavigate(newPage) {
+    setPage(newPage);
+
+    if (newPage === "browse") {
+      setSelectedVideo(null);
+      loadVideos();
+    }
   }
 
   function handleSelectVideo(video) {
@@ -25,29 +41,37 @@ export default function App() {
     setPage("player");
   }
 
-  function handleNavigate(dest) {
-    setPage(dest);
-    setSelectedVideo(null);
-    if (dest === "browse") loadVideos();
-  }
-
   return (
-    <div style={{ minHeight: "100vh", background: "#0a0a0f", fontFamily: "'Space Grotesk', sans-serif" }}>
+    <div>
       <Navbar
-        page={page === "player" ? "browse" : page}
+        currentPage={page}
         onNavigate={handleNavigate}
         account={account}
         onConnect={connectWallet}
       />
+
       {page === "browse" && (
-        <BrowsePage onSelectVideo={handleSelectVideo} chainVideos={chainVideos} />
+        <BrowsePage
+          chainVideos={chainVideos}
+          onSelectVideo={handleSelectVideo}
+        />
       )}
+
       {page === "player" && selectedVideo && (
-        <PlayerPage video={selectedVideo} contractHook={contractHook} onBack={() => handleNavigate("browse")} />
+        <PlayerPage
+          video={selectedVideo}
+          contractHook={contractHook}
+          onBack={() => handleNavigate("browse")}
+        />
       )}
+
       {page === "dashboard" && (
-        <DashboardPage contractHook={contractHook} onUploadSuccess={loadVideos} />
+        <DashboardPage
+          contractHook={contractHook}
+          onUploadSuccess={loadVideos}
+        />
       )}
     </div>
   );
 }
+
