@@ -1,4 +1,3 @@
-
 export const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
 export const CONTRACT_ABI = [
@@ -49,7 +48,10 @@ export const CONTRACT_ABI = [
     "type": "event"
   },
   {
-    "inputs": [{ "name": "viewer", "type": "address" }, { "name": "videoId", "type": "uint256" }],
+    "inputs": [
+      { "name": "viewer", "type": "address" },
+      { "name": "videoId", "type": "uint256" }
+    ],
     "name": "hasAccess",
     "outputs": [{ "name": "", "type": "bool" }],
     "stateMutability": "view",
@@ -80,6 +82,7 @@ export const CONTRACT_ABI = [
     "inputs": [
       { "name": "cid", "type": "string" },
       { "name": "contentHash", "type": "bytes32" },
+      { "name": "signature", "type": "bytes" },
       { "name": "price", "type": "uint256" },
       { "name": "title", "type": "string" }
     ],

@@ -1,71 +1,66 @@
 import { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from "../contract/index.js";
+import { useWallet } from "../context/WalletContext";
 
+/**
+ * useContract: read+write ethers Contract bound to the connected wallet.
+ *
+ * Reads account/signer/provider from WalletContext (single source of truth).
+ * Returns the same API as before so existing pages don't need changes,
+ * plus a new signContentOwnership helper for Phase 5's upload signing flow.
+ */
 export function useContract() {
+  const { account, provider, signer } = useWallet();
   const [contract, setContract] = useState(null);
-  const [provider, setProvider] = useState(null);
-  const [signer, setSigner] = useState(null);
-  const [account, setAccount] = useState(null);
   const [earnings, setEarnings] = useState("0");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Initialize provider + contract on load
+  // Build the contract instance whenever wallet state changes.
+  // Use signer for writes when connected; fall back to provider for read-only.
   useEffect(() => {
-    if (!window.ethereum) return;
-    const p = new ethers.BrowserProvider(window.ethereum);
-    setProvider(p);
-    const readOnly = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, p);
-    setContract(readOnly);
-
-    // Listen for account changes
-    window.ethereum.on("accountsChanged", (accounts) => {
-      setAccount(accounts[0] || null);
-    });
-  }, []);
-
-  // Connect wallet
-  async function connectWallet() {
-    try {
-      setError(null);
-      const accounts = await provider.send("eth_requestAccounts", []);
-      const s = await provider.getSigner();
-      setSigner(s);
-      setAccount(accounts[0]);
-      // Reconnect contract with signer for write operations
-      const c = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, s);
-      setContract(c);
-      return accounts[0];
-    } catch (err) {
-      setError("Wallet connection rejected.");
-      return null;
+    if (signer) {
+      setContract(new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer));
+    } else if (provider) {
+      setContract(new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider));
+    } else {
+      setContract(null);
     }
+  }, [signer, provider]);
+
+  /**
+   * Sign the ownership fingerprint for a video upload.
+   * Frontend computes keccak256(contentHash || creator), then asks MetaMask
+   * to sign it with personal_sign. Contract verifies via ecrecover.
+   */
+  async function signContentOwnership(contentHash) {
+    if (!signer || !account) throw new Error("Wallet not connected");
+    const fingerprint = ethers.keccak256(
+      ethers.solidityPacked(["bytes32", "address"], [contentHash, account])
+    );
+    const signature = await signer.signMessage(ethers.getBytes(fingerprint));
+    return { fingerprint, signature };
   }
 
-  // Upload a video on-chain
-  async function uploadVideo(cid, title, priceEth) {
+  async function uploadVideo(cid, contentHash, signature, title, priceEth) {
     try {
       setLoading(true);
       setError(null);
       const priceWei = ethers.parseEther(priceEth.toString());
-      // Compute contentHash = keccak256(cid + creator address)
-      const contentHash = ethers.keccak256(
-        ethers.solidityPacked(["string", "address"], [cid, account])
-      );
-      const tx = await contract.uploadVideo(cid, contentHash, priceWei, title);
+      const tx = await contract.uploadVideo(cid, contentHash, signature, priceWei, title);
       const receipt = await tx.wait();
       console.log("Video uploaded, tx:", receipt.hash);
       return receipt;
     } catch (err) {
-      setError(err.message || "Upload failed.");
+      console.error("uploadVideo error:", err);
+      setError(err.shortMessage || err.message || "Upload failed.");
       return null;
     } finally {
       setLoading(false);
     }
   }
 
-  // Pay to watch a video
   async function payToWatch(videoId, priceWei) {
     try {
       setLoading(true);
@@ -75,14 +70,14 @@ export function useContract() {
       console.log("Payment confirmed, tx:", receipt.hash);
       return receipt;
     } catch (err) {
-      setError(err.message || "Payment failed.");
+      console.error("payToWatch error:", err);
+      setError(err.shortMessage || err.message || "Payment failed.");
       return null;
     } finally {
       setLoading(false);
     }
   }
 
-  // Tip a creator
   async function tipCreator(videoId, tipEth) {
     try {
       setLoading(true);
@@ -93,14 +88,14 @@ export function useContract() {
       console.log("Tip sent, tx:", receipt.hash);
       return receipt;
     } catch (err) {
-      setError(err.message || "Tip failed.");
+      console.error("tipCreator error:", err);
+      setError(err.shortMessage || err.message || "Tip failed.");
       return null;
     } finally {
       setLoading(false);
     }
   }
 
-  // Withdraw earnings
   async function withdrawEarnings() {
     try {
       setLoading(true);
@@ -111,14 +106,14 @@ export function useContract() {
       await fetchEarnings();
       return receipt;
     } catch (err) {
-      setError(err.message || "Withdraw failed.");
+      console.error("withdrawEarnings error:", err);
+      setError(err.shortMessage || err.message || "Withdraw failed.");
       return null;
     } finally {
       setLoading(false);
     }
   }
 
-  // Check if viewer has access
   async function checkAccess(videoId) {
     if (!account || !contract) return false;
     try {
@@ -128,20 +123,20 @@ export function useContract() {
     }
   }
 
-  // Fetch on-chain earnings for connected wallet
   const fetchEarnings = useCallback(async () => {
     if (!account || !contract) return;
     try {
       const raw = await contract.earnings(account);
       setEarnings(ethers.formatEther(raw));
-    } catch {}
+    } catch (err) {
+      console.error("fetchEarnings error:", err);
+    }
   }, [account, contract]);
 
   useEffect(() => {
-    if (account) fetchEarnings();
-  }, [account, fetchEarnings]);
+    if (account && contract) fetchEarnings();
+  }, [account, contract, fetchEarnings]);
 
-  // Fetch all videos from chain
   async function fetchVideos() {
     if (!contract) return [];
     try {
@@ -176,8 +171,8 @@ export function useContract() {
     earnings,
     loading,
     error,
-    connectWallet,
     uploadVideo,
+    signContentOwnership,
     payToWatch,
     tipCreator,
     withdrawEarnings,

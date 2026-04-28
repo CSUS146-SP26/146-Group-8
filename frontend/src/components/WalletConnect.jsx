@@ -1,50 +1,7 @@
-import { useState, useEffect } from "react";
-import { ethers } from "ethers";
+import { useWallet } from "../context/WalletContext";
 
-export default function WalletConnect({ onAccountChange }) {
-  const [account, setAccount] = useState(null);
-  const [balance, setBalance] = useState(null);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("connectedAccount");
-    if (saved) reconnect(saved);
-  }, []);
-
-  async function reconnect(savedAccount) {
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const accounts = await provider.listAccounts();
-      const match = accounts.find(a => a.address.toLowerCase() === savedAccount.toLowerCase());
-      if (match) {
-        const bal = await provider.getBalance(match.address);
-        setAccount(match.address);
-        setBalance(ethers.formatEther(bal));
-        if (onAccountChange) onAccountChange(match.address);
-      }
-    } catch {}
-  }
-
-  async function connectWallet() {
-    setError(null);
-    if (!window.ethereum) { setError("MetaMask not detected."); return; }
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const accounts = await provider.send("eth_requestAccounts", []);
-      const address = accounts[0];
-      const bal = await provider.getBalance(address);
-      setAccount(address);
-      setBalance(ethers.formatEther(bal));
-      localStorage.setItem("connectedAccount", address);
-      if (onAccountChange) onAccountChange(address);
-    } catch { setError("Connection rejected."); }
-  }
-
-  function disconnect() {
-    setAccount(null); setBalance(null);
-    localStorage.removeItem("connectedAccount");
-    if (onAccountChange) onAccountChange(null);
-  }
+export default function WalletConnect() {
+  const { account, balance, connect, disconnect, error } = useWallet();
 
   const short = (addr) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
@@ -56,12 +13,14 @@ export default function WalletConnect({ onAccountChange }) {
             <span style={styles.dot} />
             <span style={styles.address}>{short(account)}</span>
             <span style={styles.divider}>|</span>
-            <span style={styles.balance}>{parseFloat(balance).toFixed(4)} ETH</span>
+            <span style={styles.balance}>
+              {balance ? parseFloat(balance).toFixed(4) : "—"} ETH
+            </span>
           </div>
           <button style={styles.disconnectBtn} onClick={disconnect}>Disconnect</button>
         </div>
       ) : (
-        <button style={styles.connectBtn} onClick={connectWallet}>
+        <button style={styles.connectBtn} onClick={connect}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="2" y="7" width="20" height="14" rx="2"/>
             <path d="M16 3H8L2 7h20l-6-4z"/>

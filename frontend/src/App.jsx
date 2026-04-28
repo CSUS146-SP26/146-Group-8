@@ -4,32 +4,34 @@ import BrowsePage from "./pages/BrowsePage";
 import PlayerPage from "./pages/PlayerPage";
 import DashboardPage from "./pages/DashboardPage";
 import { useContract } from "./hooks/useContract";
+import { useWallet } from "./context/WalletContext";
 
 export default function App() {
   const [page, setPage] = useState("browse");
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [chainVideos, setChainVideos] = useState([]);
 
+  const { account } = useWallet();
   const contractHook = useContract();
-  const { account, connectWallet, fetchVideos } = contractHook;
+  const { fetchVideos } = contractHook;
 
   useEffect(() => {
     loadVideos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account]);
 
   async function loadVideos() {
     try {
       const videos = await fetchVideos();
       setChainVideos(videos || []);
-    } catch (error) {
-      console.error("Failed to load blockchain videos:", error);
+    } catch (err) {
+      console.error("Failed to load blockchain videos:", err);
       setChainVideos([]);
     }
   }
 
   function handleNavigate(newPage) {
     setPage(newPage);
-
     if (newPage === "browse") {
       setSelectedVideo(null);
       loadVideos();
@@ -43,12 +45,7 @@ export default function App() {
 
   return (
     <div>
-      <Navbar
-        currentPage={page}
-        onNavigate={handleNavigate}
-        account={account}
-        onConnect={connectWallet}
-      />
+      <Navbar currentPage={page} onNavigate={handleNavigate} />
 
       {page === "browse" && (
         <BrowsePage
@@ -74,4 +71,3 @@ export default function App() {
     </div>
   );
 }
-

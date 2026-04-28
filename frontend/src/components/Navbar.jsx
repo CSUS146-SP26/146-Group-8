@@ -1,6 +1,6 @@
 import WalletConnect from "./WalletConnect";
 
-export default function Navbar({ currentPage, onNavigate, account, onConnect }) {
+export default function Navbar({ currentPage, onNavigate }) {
   const links = [
     { id: "browse", label: "Browse" },
     { id: "dashboard", label: "Dashboard" },
@@ -15,7 +15,6 @@ export default function Navbar({ currentPage, onNavigate, account, onConnect }) 
               <polygon points="5,3 19,12 5,21" fill="#6366f1" />
             </svg>
           </div>
-
           <span style={styles.logoText}>DecentTube</span>
         </div>
 
@@ -36,10 +35,7 @@ export default function Navbar({ currentPage, onNavigate, account, onConnect }) 
         </div>
       </div>
 
-      <WalletConnect
-        account={account}
-        onAccountChange={onConnect}
-      />
+      <WalletConnect />
     </nav>
   );
 }
@@ -70,12 +66,7 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
   },
-  logoText: {
-    fontSize: "16px",
-    fontWeight: "700",
-    color: "#f1f0ff",
-    letterSpacing: "-0.3px",
-  },
+  logoText: { fontSize: "16px", fontWeight: "700", color: "#f1f0ff", letterSpacing: "-0.3px" },
   links: { display: "flex", alignItems: "center", gap: "4px" },
   navLink: {
     background: "transparent",
@@ -90,10 +81,7 @@ const styles = {
     transition: "all 0.2s",
     position: "relative",
   },
-  navLinkActive: {
-    color: "#f1f0ff",
-    background: "rgba(255,255,255,0.06)",
-  },
+  navLinkActive: { color: "#f1f0ff", background: "rgba(255,255,255,0.06)" },
   activeDot: {
     position: "absolute",
     bottom: "-1px",
@@ -105,4 +93,3 @@ const styles = {
     background: "#6366f1",
   },
 };
-
