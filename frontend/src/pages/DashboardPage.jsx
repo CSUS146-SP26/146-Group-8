@@ -1,25 +1,77 @@
 import { useState } from "react";
 import { ethers } from "ethers";
 import { shortAddress } from "../data/videos";
+import { uploadFileToIPFS } from "../services/pinata";
 
 export default function DashboardPage({ contractHook, onUploadSuccess }) {
-  const { account, uploadVideo, withdrawEarnings, earnings, loading, error } = contractHook;
-  const [form, setForm] = useState({ title: "", price: "", cid: "" });
+  const {
+    account,
+    uploadVideo,
+    signContentOwnership,
+    withdrawEarnings,
+    earnings,
+    loading,
+    error,
+  } = contractHook;
+  const [form, setForm] = useState({ title: "", price: "", file: null });
+  const [stage, setStage] = useState(null); // 'hashing' | 'signing' | 'uploading' | 'confirming'
   const [uploaded, setUploaded] = useState(false);
   const [withdrawn, setWithdrawn] = useState(false);
   const [localError, setLocalError] = useState(null);
 
+  // Read file as ArrayBuffer so we can keccak256 the raw bytes
+  function readFileAsBytes(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(new Uint8Array(reader.result));
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
   async function handleUpload(e) {
     e.preventDefault();
     setLocalError(null);
+    setUploaded(false);
+
     if (!account) { setLocalError("Connect your wallet first."); return; }
-    if (!form.title || !form.price || !form.cid) { setLocalError("Please fill in all fields."); return; }
-    const receipt = await uploadVideo(form.cid, form.title, form.price);
-    if (receipt) {
-      setUploaded(true);
-      setForm({ title: "", price: "", cid: "" });
-      if (onUploadSuccess) onUploadSuccess();
-      setTimeout(() => setUploaded(false), 3000);
+    if (!form.title || !form.price || !form.file) {
+      setLocalError("Please fill in all fields and choose a file.");
+      return;
+    }
+
+    try {
+      // 1. Hash the file content in-browser
+      setStage("hashing");
+      const bytes = await readFileAsBytes(form.file);
+      const contentHash = ethers.keccak256(bytes);
+
+      // 2. Ask MetaMask to sign the ownership fingerprint
+      setStage("signing");
+      const { signature } = await signContentOwnership(contentHash);
+
+      // 3. Upload the file to IPFS via Pinata
+      setStage("uploading");
+      const { cid } = await uploadFileToIPFS(form.file);
+
+      // 4. Register on-chain (verifies signature + stores CID + hash)
+      setStage("confirming");
+      const receipt = await uploadVideo(cid, contentHash, signature, form.title, form.price);
+
+      setStage(null);
+      if (receipt) {
+        setUploaded(true);
+        setForm({ title: "", price: "", file: null });
+        // Reset the file input visually
+        const fileInput = document.getElementById("video-file-input");
+        if (fileInput) fileInput.value = "";
+        if (onUploadSuccess) onUploadSuccess();
+        setTimeout(() => setUploaded(false), 4000);
+      }
+    } catch (err) {
+      console.error("Upload pipeline error:", err);
+      setLocalError(err.shortMessage || err.message || "Upload failed.");
+      setStage(null);
     }
   }
 
@@ -29,6 +81,15 @@ export default function DashboardPage({ contractHook, onUploadSuccess }) {
   }
 
   const displayError = localError || error;
+  const busy = loading || stage !== null;
+
+  const stageLabels = {
+    hashing: "Hashing file content...",
+    signing: "Awaiting wallet signature...",
+    uploading: "Uploading to IPFS...",
+    confirming: "Confirming on-chain...",
+  };
+  const buttonLabel = stage ? stageLabels[stage] : "Upload & Register on Chain";
 
   return (
     <div style={styles.page}>
@@ -44,7 +105,7 @@ export default function DashboardPage({ contractHook, onUploadSuccess }) {
         {[
           { label: "Pending earnings", value: `${parseFloat(earnings).toFixed(4)} ETH`, color: "#10b981" },
           { label: "Network", value: "Localhost:8545", color: "#6366f1" },
-          { label: "Contract", value: "Deployed ✓", color: "#818cf8" },
+          { label: "Contract", value: "Deployed", color: "#818cf8" },
           { label: "Status", value: account ? "Connected" : "Disconnected", color: account ? "#10b981" : "#ef4444" },
         ].map(({ label, value, color }) => (
           <div key={label} style={styles.statCard}>
@@ -59,7 +120,7 @@ export default function DashboardPage({ contractHook, onUploadSuccess }) {
         <div style={styles.card}>
           <div style={styles.cardHeader}>
             <h2 style={styles.cardTitle}>Upload video</h2>
-            <span style={styles.cardSub}>Register on-chain via smart contract</span>
+            <span style={styles.cardSub}>IPFS + ECDSA signature + on-chain registration</span>
           </div>
 
           <form onSubmit={handleUpload} style={styles.form}>
@@ -71,19 +132,25 @@ export default function DashboardPage({ contractHook, onUploadSuccess }) {
                 placeholder="Enter a title..."
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
+                disabled={busy}
               />
             </div>
 
             <div style={styles.fieldGroup}>
-              <label style={styles.label}>IPFS CID</label>
+              <label style={styles.label}>Video file</label>
               <input
+                id="video-file-input"
                 style={styles.input}
-                type="text"
-                placeholder="QmXoypizjW3WknFiJnKLwHCnL72..."
-                value={form.cid}
-                onChange={(e) => setForm({ ...form, cid: e.target.value })}
+                type="file"
+                accept="video/*,image/*"
+                onChange={(e) => setForm({ ...form, file: e.target.files[0] || null })}
+                disabled={busy}
               />
-              <span style={styles.fieldHint}>Paste the IPFS CID of your uploaded video</span>
+              <span style={styles.fieldHint}>
+                {form.file
+                  ? `Selected: ${form.file.name} (${(form.file.size / 1024).toFixed(1)} KB)`
+                  : "Pick the file you want to upload to IPFS"}
+              </span>
             </div>
 
             <div style={styles.fieldGroup}>
@@ -96,15 +163,16 @@ export default function DashboardPage({ contractHook, onUploadSuccess }) {
                 placeholder="0.01"
                 value={form.price}
                 onChange={(e) => setForm({ ...form, price: e.target.value })}
+                disabled={busy}
               />
             </div>
 
             <button
               type="submit"
-              style={{ ...styles.submitBtn, ...((!account || loading) ? { opacity: 0.5 } : {}) }}
-              disabled={!account || loading}
+              style={{ ...styles.submitBtn, ...((!account || busy) ? { opacity: 0.5, cursor: "not-allowed" } : {}) }}
+              disabled={!account || busy}
             >
-              {loading ? "Registering on-chain..." : "Upload & Register on Chain"}
+              {buttonLabel}
             </button>
 
             {!account && <p style={styles.walletWarning}>Connect your wallet to upload</p>}
@@ -114,7 +182,7 @@ export default function DashboardPage({ contractHook, onUploadSuccess }) {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5">
                   <path d="M20 6L9 17l-5-5"/>
                 </svg>
-                Video registered on-chain!
+                Video uploaded to IPFS and registered on-chain!
               </div>
             )}
           </form>
@@ -153,11 +221,12 @@ export default function DashboardPage({ contractHook, onUploadSuccess }) {
               <h2 style={styles.cardTitle}>How it works</h2>
             </div>
             {[
-              { step: "1", text: "Paste your IPFS CID and set a price" },
-              { step: "2", text: "Contract computes keccak256(CID + address)" },
-              { step: "3", text: "Video registered on-chain — immutable" },
-              { step: "4", text: "Viewers pay ETH to unlock your content" },
-              { step: "5", text: "Withdraw earnings anytime to your wallet" },
+              { step: "1", text: "Pick a file and set a price" },
+              { step: "2", text: "Browser hashes file content (keccak256)" },
+              { step: "3", text: "MetaMask signs the ownership fingerprint" },
+              { step: "4", text: "File uploaded to IPFS via Pinata" },
+              { step: "5", text: "Contract verifies signature and registers on-chain" },
+              { step: "6", text: "Viewers pay ETH to unlock; withdraw earnings anytime" },
             ].map(({ step, text }) => (
               <div key={step} style={styles.stepRow}>
                 <div style={styles.stepNum}>{step}</div>
