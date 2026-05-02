@@ -94,8 +94,13 @@ Events: `VideoUploaded`, `VideoPurchased`, `CreatorTipped`, `EarningsWithdrawn`.
 
 ---
 
+
+
 ## Project Structure
 
+
+
+```
 146-Group-8/
 ├── smartcontracts/
 │   ├── contracts/
@@ -126,8 +131,8 @@ Events: `VideoUploaded`, `VideoPurchased`, `CreatorTipped`, `EarningsWithdrawn`.
 │   └── package.json
 ├── docs/screenshots/
 └── README.md
+```
 
----
 
 ## Running Locally
 
